@@ -126,7 +126,7 @@ static struct atsamvqspi_executive* atsamvqspi_executive_alloc(struct flash_bank
 	/* Write algorithm to working area */
 	retval = target_write_buffer(exec->target, exec->text_working_area->address,
 		atsamv7qspi_executive_bin_len, atsamv7qspi_executive_bin);
-	LOG_DEBUG("wrote atsamv7qspi_executive_bin to %x", exec->text_working_area->address);
+	LOG_DEBUG("wrote atsamv7qspi_executive_bin to %lx", exec->text_working_area->address);
 	if (retval != ERROR_OK) {
 		atsamvqspi_executive_free(exec);
 		return NULL;
@@ -490,7 +490,7 @@ static int atsamvqspi_read_flash_id(struct flash_bank *bank, uint32_t *id)
 	uint32_t params[1] = { EXECUTIVE_COMMAND_PROBE };
 	retval = atsamvqspi_executive_set_params(executive, params, 1);
 	if(retval == ERROR_OK) {
-		retval = atsamvqspi_executive_run(executive, id, 1000);
+		retval = atsamvqspi_executive_run(executive, id, 5000);
 	} else {
 		LOG_ERROR("unable to set parameters for atsamvqspi flash executive");
 	}
