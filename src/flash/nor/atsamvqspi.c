@@ -66,7 +66,7 @@ struct atsamvqspi_executive {
 };
 
 #define EXECUTIVE_PARAM_WORKING_AREA_SIZE 24
-#define EXECUTIVE_STACK_WORKING_AREA_SIZE 1000
+#define EXECUTIVE_STACK_WORKING_AREA_SIZE 2000
 
 static void atsamvqspi_executive_free(struct atsamvqspi_executive* exec)
 {

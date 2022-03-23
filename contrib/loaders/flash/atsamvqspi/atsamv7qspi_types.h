@@ -16,12 +16,12 @@ typedef struct {
 } erase_params_t;
 
 struct fifo_cursors {
-    uint8_t* write;
-    uint8_t* read;
+    volatile uint8_t* volatile write;
+    volatile uint8_t* volatile read;
 };
 
 typedef struct {
-    struct fifo_cursors* cursors;
+    volatile struct fifo_cursors* cursors;
     uint8_t* start_offset;
     uint8_t* end_offset;
 } fifo_t;
@@ -42,6 +42,7 @@ typedef struct {
 
 enum atsamv7qspi_executive_error {
     EXECUTIVE_ERROR_OK,
+    EXECUTIVE_ERROR_INIT_FAILED,
     EXECUTIVE_ERROR_INVALID_OP,
     EXECUTIVE_ERROR_UNKNOWN_DEVICE,
     EXECUTIVE_ERROR_INVALID_OFFSET,
