@@ -1,32 +1,143 @@
 {
-  description = "A Nix-flake-based C/C++ development environment";
+  inputs = {
+    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0";
+    flake-utils.url = "github:numtide/flake-utils";
+    self.submodules = true;
+  };
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        name = "openocd";
+        src = ./.;
+        pkgs = nixpkgs.legacyPackages.${system};
+      in
+      {
+        packages = {
+          # default = derivation {
+          #   inherit system name src;
+          #   builder = with pkgs; "${bash}/bin/bash";
+          #   args = [ "-c" "echo foo > $out" ];
+          # };
+          # defaultPackage = self.packages.spanner-emulator;
+        } // (if system == "x86_64-linux" then {
+          default =
+            let
+              inherit (pkgs) stdenv lib pkg-config hidapi tcl jimtcl libjaylink libusb1 libgpiod_1 libtool which automake autoconf libftdi1;
+              enableFtdi = true;
+              extraHardwareSupport = [ ];
 
-  inputs =
-    {
-      nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0"; # stable Nixpkgs
-      flake-utils.url = "github:numtide/flake-utils";
-    };
+              isWindows = stdenv.hostPlatform.isWindows;
+              notWindows = !isWindows;
+            in
+            stdenv.mkDerivation rec {
+              pname = "openocd";
+              version = "0.12.0-luminaire";
+              src = ./.;
 
-  outputs =
-    { self, nixpkgs, ... }@inputs:
+              nativeBuildInputs = [
+                pkg-config
+                tcl
+              ];
 
-    let
-      supportedSystems = [
-        "x86_64-linux"
-        "aarch64-linux"
-      ];
-      forEachSupportedSystem =
-        f:
-        inputs.nixpkgs.lib.genAttrs supportedSystems (
-          system:
-          f {
-            pkgs = import inputs.nixpkgs { inherit system; };
-          }
-        );
-    in
-    {
-      packages.x86_64-linux.default = 
-        with import nixpkgs { system = "x86_64-linux"; };
-        pkgs.callPackage ./package.nix { };      
-    };
+              buildInputs = [
+                libusb1
+                libtool
+                which
+                pkg-config
+                automake
+                autoconf
+              ]
+              ++ lib.optionals notWindows [
+                hidapi
+                jimtcl
+                libftdi1
+                libjaylink
+              ]
+              ++
+                # tracking issue for v2 api changes https://sourceforge.net/p/openocd/tickets/306/
+                lib.optional stdenv.hostPlatform.isLinux libgpiod_1;
+
+              configureFlags = [
+                "--disable-werror"
+                "--enable-jtag_vpi"
+                "--enable-remote-bitbang"
+                "--enable-amtjtagaccel"
+                "--enable-armjtagew"
+                "--enable-gw16012"
+                "--enable-jlink"
+                "--enable-oocd_trace"
+                "--enable-opendous"
+                "--enable-osbdm"
+                "--enable-parport"
+                "--enable-presto_libftdi"
+                "--enable-remote-bitbang"
+                "--enable-rlink"
+                "--enable-stlink"
+                "--enable-ti-icdi"
+                "--enable-ulink"
+                "--enable-usbprog"
+                "--enable-vsllink"
+                "--enable-aice"
+                "--enable-cmsis-dap"
+                "--enable-dummy"
+                "--enable-jtag_vpi"
+                "--enable-openjtag_ftdi"
+                "--enable-usb-blaster-2"
+                "--enable-usb_blaster_libftdi"
+                (lib.enableFeature notWindows "buspirate")
+                (lib.enableFeature (notWindows && enableFtdi) "ftdi")
+                (lib.enableFeature stdenv.hostPlatform.isLinux "linuxgpiod")
+                (lib.enableFeature stdenv.hostPlatform.isLinux "sysfsgpio")
+                (lib.enableFeature isWindows "internal-jimtcl")
+                (lib.enableFeature isWindows "internal-libjaylink")
+              ]
+              ++ map (hardware: "--enable-${hardware}") extraHardwareSupport;
+
+              enableParallelBuilding = true;
+
+              env.NIX_CFLAGS_COMPILE = toString (
+                lib.optionals stdenv.cc.isGNU [
+                  "-Wno-error=cpp"
+                  "-Wno-error=strict-prototypes" # fixes build failure with hidapi 0.10.0
+                ]
+              );
+
+              preConfigure = ''
+                ./bootstrap
+              '';
+
+              postInstall = lib.optionalString stdenv.hostPlatform.isLinux ''
+                mkdir -p "$out/etc/udev/rules.d"
+                rules="$out/share/openocd/contrib/60-openocd.rules"
+                if [ ! -f "$rules" ]; then
+                    echo "$rules is missing, must update the Nix file."
+                    exit 1
+                fi
+                ln -s "$rules" "$out/etc/udev/rules.d/"
+              '';
+
+              meta = with lib; {
+                description = "Free and Open On-Chip Debugging, In-System Programming and Boundary-Scan Testing";
+                mainProgram = "openocd";
+                longDescription = ''
+                  OpenOCD provides on-chip programming and debugging support with a layered
+                  architecture of JTAG interface and TAP support, debug target support
+                  (e.g. ARM, MIPS), and flash chip drivers (e.g. CFI, NAND, etc.).  Several
+                  network interfaces are available for interactiving with OpenOCD: HTTP,
+                  telnet, TCL, and GDB.  The GDB server enables OpenOCD to function as a
+                  "remote target" for source-level debugging of embedded systems using the
+                  GNU GDB program.
+                '';
+                homepage = "https://openocd.sourceforge.net/";
+                license = licenses.gpl2Plus;
+                maintainers = with maintainers; [
+                  bjornfor
+                  prusnak
+                ];
+                platforms = platforms.unix ++ platforms.windows;
+              };
+            };
+        } else { });
+      }
+    );
 }
