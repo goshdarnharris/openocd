@@ -64,6 +64,7 @@ static const struct avrf_type avft_chips_info[] = {
 	{"atmega324pa", 0x9511, 128, 256, 4, 256},
 	{"atmega644p", 0x960a, 256, 256, 8, 256},
 	{"atmega1284p", 0x9705, 256, 512, 8, 512},
+	{"atmega32u4", 0x9587, 128, 256, 4, 256},
 };
 
 /* avr program functions */
@@ -125,7 +126,7 @@ static int avr_jtagprg_chiperase(struct avr_common *avr)
 			AVR_JTAG_REG_PROGRAMMING_COMMAND_LEN);
 		if (mcu_execute_queue() != ERROR_OK)
 			return ERROR_FAIL;
-		LOG_DEBUG("poll_value = 0x%04" PRIx32 "", poll_value);
+		LOG_DEBUG("poll_value = 0x%04" PRIx32, poll_value);
 	} while (!(poll_value & 0x0200));
 
 	return ERROR_OK;
@@ -186,7 +187,7 @@ static int avr_jtagprg_writeflashpage(struct avr_common *avr,
 			AVR_JTAG_REG_PROGRAMMING_COMMAND_LEN);
 		if (mcu_execute_queue() != ERROR_OK)
 			return ERROR_FAIL;
-		LOG_DEBUG("poll_value = 0x%04" PRIx32 "", poll_value);
+		LOG_DEBUG("poll_value = 0x%04" PRIx32, poll_value);
 	} while (!(poll_value & 0x0200));
 
 	return ERROR_OK;
@@ -252,8 +253,8 @@ static int avrf_write(struct flash_bank *bank, const uint8_t *buffer, uint32_t o
 		return ERROR_FLASH_DST_BREAKS_ALIGNMENT;
 	}
 
-	LOG_DEBUG("offset is 0x%08" PRIx32 "", offset);
-	LOG_DEBUG("count is %" PRIu32 "", count);
+	LOG_DEBUG("offset is 0x%08" PRIx32, offset);
+	LOG_DEBUG("count is %" PRIu32, count);
 
 	if (avr_jtagprg_enterprogmode(avr) != ERROR_OK)
 		return ERROR_FAIL;
@@ -307,7 +308,7 @@ static int avrf_probe(struct flash_bank *bank)
 	if (mcu_execute_queue() != ERROR_OK)
 		return ERROR_FAIL;
 
-	LOG_INFO("device id = 0x%08" PRIx32 "", device_id);
+	LOG_INFO("device id = 0x%08" PRIx32, device_id);
 	if (EXTRACT_MFG(device_id) != 0x1F)
 		LOG_ERROR("0x%" PRIx32 " is invalid Manufacturer for avr, 0x%X is expected",
 			EXTRACT_MFG(device_id),
@@ -372,7 +373,7 @@ static int avrf_info(struct flash_bank *bank, struct command_invocation *cmd)
 	if (mcu_execute_queue() != ERROR_OK)
 		return ERROR_FAIL;
 
-	LOG_INFO("device id = 0x%08" PRIx32 "", device_id);
+	LOG_INFO("device id = 0x%08" PRIx32, device_id);
 	if (EXTRACT_MFG(device_id) != 0x1F)
 		LOG_ERROR("0x%" PRIx32 " is invalid Manufacturer for avr, 0x%X is expected",
 			EXTRACT_MFG(device_id),
@@ -389,7 +390,7 @@ static int avrf_info(struct flash_bank *bank, struct command_invocation *cmd)
 
 	if (avr_info) {
 		/* chip found */
-		command_print_sameline(cmd, "%s - Rev: 0x%" PRIx32 "", avr_info->name,
+		command_print_sameline(cmd, "%s - Rev: 0x%" PRIx32, avr_info->name,
 			EXTRACT_VER(device_id));
 		return ERROR_OK;
 	} else {

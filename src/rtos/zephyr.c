@@ -20,7 +20,6 @@
 #include "rtos.h"
 #include "rtos_standard_stackings.h"
 #include "target/target.h"
-#include "target/target_type.h"
 #include "target/armv7m.h"
 #include "target/arc.h"
 
@@ -57,6 +56,7 @@ enum zephyr_offsets {
 	OFFSET_T_ARCH,
 	OFFSET_T_PREEMPT_FLOAT,
 	OFFSET_T_COOP_FLOAT,
+	OFFSET_T_ARM_EXC_RETURN,
 	OFFSET_MAX
 };
 
@@ -785,7 +785,7 @@ static int zephyr_get_symbol_list_to_lookup(struct symbol_table_elem **symbol_li
 	return ERROR_OK;
 }
 
-struct rtos_type zephyr_rtos = {
+const struct rtos_type zephyr_rtos = {
 	.name = "Zephyr",
 
 	.detect_rtos = zephyr_detect_rtos,

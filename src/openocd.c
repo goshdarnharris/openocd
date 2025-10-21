@@ -53,24 +53,23 @@ static const char openocd_startup_tcl[] = {
 };
 
 /* Give scripts and TELNET a way to find out what version this is */
-static int jim_version_command(Jim_Interp *interp, int argc,
-	Jim_Obj * const *argv)
+COMMAND_HANDLER(handler_version_command)
 {
-	if (argc > 2)
-		return JIM_ERR;
-	const char *str = "";
-	char *version_str;
-	version_str = OPENOCD_VERSION;
+	char *version_str = OPENOCD_VERSION;
 
-	if (argc == 2)
-		str = Jim_GetString(argv[1], NULL);
+	if (CMD_ARGC > 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
 
-	if (strcmp("git", str) == 0)
+	if (CMD_ARGC == 1) {
+		if (strcmp("git", CMD_ARGV[0]))
+			return ERROR_COMMAND_ARGUMENT_INVALID;
+
 		version_str = GITVERSION;
+	}
 
-	Jim_SetResult(interp, Jim_NewStringObj(interp, version_str, -1));
+	command_print(CMD, "%s", version_str);
 
-	return JIM_OK;
+	return ERROR_OK;
 }
 
 static int log_target_callback_event_handler(struct target *target,
@@ -78,20 +77,20 @@ static int log_target_callback_event_handler(struct target *target,
 	void *priv)
 {
 	switch (event) {
-		case TARGET_EVENT_GDB_START:
-			target->verbose_halt_msg = false;
-			break;
-		case TARGET_EVENT_GDB_END:
-			target->verbose_halt_msg = true;
-			break;
-		case TARGET_EVENT_HALTED:
-			if (target->verbose_halt_msg) {
-				/* do not display information when debugger caused the halt */
-				target_arch_state(target);
-			}
-			break;
-		default:
-			break;
+	case TARGET_EVENT_GDB_START:
+		target->verbose_halt_msg = false;
+		break;
+	case TARGET_EVENT_GDB_END:
+		target->verbose_halt_msg = true;
+		break;
+	case TARGET_EVENT_HALTED:
+		if (target->verbose_halt_msg) {
+			/* do not display information when debugger caused the halt */
+			target_arch_state(target);
+		}
+		break;
+	default:
+		break;
 	}
 
 	return ERROR_OK;
@@ -173,7 +172,8 @@ COMMAND_HANDLER(handle_init_command)
 	jtag_poll_unmask(save_poll_mask);
 
 	/* initialize telnet subsystem */
-	gdb_target_add_all(all_targets);
+	if (gdb_target_add_all(all_targets) != ERROR_OK)
+		return ERROR_FAIL;
 
 	target_register_event_callback(log_target_callback_event_handler, CMD_CTX);
 
@@ -196,9 +196,10 @@ COMMAND_HANDLER(handle_add_script_search_dir_command)
 static const struct command_registration openocd_command_handlers[] = {
 	{
 		.name = "version",
-		.jim_handler = jim_version_command,
+		.handler = handler_version_command,
 		.mode = COMMAND_ANY,
 		.help = "show program version",
+		.usage = "[git]",
 	},
 	{
 		.name = "noinit",
@@ -232,66 +233,24 @@ static int openocd_register_commands(struct command_context *cmd_ctx)
 	return register_commands(cmd_ctx, NULL, openocd_command_handlers);
 }
 
-/*
- * TODO: to be removed after v0.12.0
- * workaround for syntax change of "expr" in jimtcl 0.81
- * replace "expr" with openocd version that prints the deprecated msg
- */
-struct jim_scriptobj {
-	void *token;
-	Jim_Obj *filename_obj;
-	int len;
-	int subst_flags;
-	int in_use;
-	int firstline;
-	int linenr;
-	int missing;
-};
-
-static int jim_expr_command(Jim_Interp *interp, int argc, Jim_Obj * const *argv)
-{
-	if (argc == 2)
-		return Jim_EvalExpression(interp, argv[1]);
-
-	if (argc > 2) {
-		Jim_Obj *obj = Jim_ConcatObj(interp, argc - 1, argv + 1);
-		Jim_IncrRefCount(obj);
-		const char *s = Jim_String(obj);
-		struct jim_scriptobj *script = Jim_GetIntRepPtr(interp->currentScriptObj);
-		if (interp->currentScriptObj == interp->emptyObj ||
-				strcmp(interp->currentScriptObj->typePtr->name, "script") ||
-				script->subst_flags ||
-				script->filename_obj == interp->emptyObj)
-			LOG_WARNING("DEPRECATED! use 'expr { %s }' not 'expr %s'", s, s);
-		else
-			LOG_WARNING("DEPRECATED! (%s:%d) use 'expr { %s }' not 'expr %s'",
-						Jim_String(script->filename_obj), script->linenr, s, s);
-		int retcode = Jim_EvalExpression(interp, obj);
-		Jim_DecrRefCount(interp, obj);
-		return retcode;
-	}
-
-	Jim_WrongNumArgs(interp, 1, argv, "expression ?...?");
-	return JIM_ERR;
-}
-
-static const struct command_registration expr_handler[] = {
-	{
-		.name = "expr",
-		.jim_handler = jim_expr_command,
-		.mode = COMMAND_ANY,
-		.help = "",
-		.usage = "",
-	},
-	COMMAND_REGISTRATION_DONE
-};
-
-static int workaround_for_jimtcl_expr(struct command_context *cmd_ctx)
-{
-	return register_commands(cmd_ctx, NULL, expr_handler);
-}
-
 struct command_context *global_cmd_ctx;
+
+static int (* const command_registrants[])(struct command_context *cmd_ctx_value) = {
+	openocd_register_commands,
+	server_register_commands,
+	gdb_register_commands,
+	log_register_commands,
+	rtt_server_register_commands,
+	transport_register_commands,
+	adapter_register_commands,
+	target_register_commands,
+	flash_register_commands,
+	nand_register_commands,
+	pld_register_commands,
+	cti_register_commands,
+	dap_register_commands,
+	arm_tpiu_swo_register_commands,
+};
 
 static struct command_context *setup_command_handler(Jim_Interp *interp)
 {
@@ -301,26 +260,7 @@ static struct command_context *setup_command_handler(Jim_Interp *interp)
 	struct command_context *cmd_ctx = command_init(openocd_startup_tcl, interp);
 
 	/* register subsystem commands */
-	typedef int (*command_registrant_t)(struct command_context *cmd_ctx_value);
-	static const command_registrant_t command_registrants[] = {
-		&workaround_for_jimtcl_expr,
-		&openocd_register_commands,
-		&server_register_commands,
-		&gdb_register_commands,
-		&log_register_commands,
-		&rtt_server_register_commands,
-		&transport_register_commands,
-		&adapter_register_commands,
-		&target_register_commands,
-		&flash_register_commands,
-		&nand_register_commands,
-		&pld_register_commands,
-		&cti_register_commands,
-		&dap_register_commands,
-		&arm_tpiu_swo_register_commands,
-		NULL
-	};
-	for (unsigned i = 0; command_registrants[i]; i++) {
+	for (unsigned int i = 0; i < ARRAY_SIZE(command_registrants); i++) {
 		int retval = (*command_registrants[i])(cmd_ctx);
 		if (retval != ERROR_OK) {
 			command_done(cmd_ctx);
@@ -436,6 +376,13 @@ int openocd_main(int argc, char *argv[])
 	free_config();
 
 	log_exit();
+
+#if USE_GCOV
+	/* Always explicitly dump coverage data before terminating.
+	 * Otherwise coverage would not be dumped when exit_on_signal occurs. */
+	void __gcov_dump(void);
+	__gcov_dump();
+#endif
 
 	if (ret == ERROR_FAIL)
 		return EXIT_FAILURE;

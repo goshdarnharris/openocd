@@ -85,7 +85,7 @@ static int esirisc_trace_clear_status(struct target *target)
 
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_STATUS, ~0);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: Status", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: Status");
 		return retval;
 	}
 
@@ -102,7 +102,7 @@ static int esirisc_trace_get_status(struct target *target, uint32_t *status)
 
 	int retval = esirisc_jtag_read_csr(jtag_info, CSR_TRACE, CSR_TRACE_STATUS, status);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to read Trace CSR: Status", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to read Trace CSR: Status");
 		return retval;
 	}
 
@@ -121,7 +121,7 @@ static int esirisc_trace_start(struct target *target)
 
 	retval = esirisc_jtag_read_csr(jtag_info, CSR_TRACE, CSR_TRACE_CONTROL, &control);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to read Trace CSR: Control", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to read Trace CSR: Control");
 		return retval;
 	}
 
@@ -129,7 +129,7 @@ static int esirisc_trace_start(struct target *target)
 
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_CONTROL, control);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: Control", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: Control");
 		return retval;
 	}
 
@@ -148,7 +148,7 @@ static int esirisc_trace_stop(struct target *target)
 
 	retval = esirisc_jtag_read_csr(jtag_info, CSR_TRACE, CSR_TRACE_CONTROL, &control);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to read Trace CSR: Control", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to read Trace CSR: Control");
 		return retval;
 	}
 
@@ -156,7 +156,7 @@ static int esirisc_trace_stop(struct target *target)
 
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_CONTROL, control);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: Control", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: Control");
 		return retval;
 	}
 
@@ -195,7 +195,7 @@ static int esirisc_trace_init(struct target *target)
 
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_CONTROL, control);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: Control", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: Control");
 		return retval;
 	}
 
@@ -203,14 +203,14 @@ static int esirisc_trace_init(struct target *target)
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_BUFFER_START,
 			trace_info->buffer_start);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: BufferStart", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: BufferStart");
 		return retval;
 	}
 
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_BUFFER_END,
 			trace_info->buffer_end);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: BufferEnd", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: BufferEnd");
 		return retval;
 	}
 
@@ -221,7 +221,7 @@ static int esirisc_trace_init(struct target *target)
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_BUFFER_CUR,
 			trace_info->buffer_start);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: BufferCurrent", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: BufferCurrent");
 		return retval;
 	}
 
@@ -241,7 +241,7 @@ static int esirisc_trace_init(struct target *target)
 
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_TRIGGER, trigger);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: Trigger", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: Trigger");
 		return retval;
 	}
 
@@ -249,14 +249,14 @@ static int esirisc_trace_init(struct target *target)
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_START_DATA,
 			trace_info->start_data);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: StartData", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: StartData");
 		return retval;
 	}
 
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_START_MASK,
 			trace_info->start_mask);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: StartMask", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: StartMask");
 		return retval;
 	}
 
@@ -264,14 +264,14 @@ static int esirisc_trace_init(struct target *target)
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_STOP_DATA,
 			trace_info->stop_data);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: StopData", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: StopData");
 		return retval;
 	}
 
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_STOP_MASK,
 			trace_info->stop_mask);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: StopMask", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: StopMask");
 		return retval;
 	}
 
@@ -279,7 +279,7 @@ static int esirisc_trace_init(struct target *target)
 	retval = esirisc_jtag_write_csr(jtag_info, CSR_TRACE, CSR_TRACE_DELAY,
 			trace_info->delay_cycles);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to write Trace CSR: Delay", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to write Trace CSR: Delay");
 		return retval;
 	}
 
@@ -287,9 +287,9 @@ static int esirisc_trace_init(struct target *target)
 }
 
 static int esirisc_trace_buf_get_u32(uint8_t *buffer, uint32_t size,
-		unsigned *pos, unsigned count, uint32_t *value)
+		unsigned int *pos, unsigned int count, uint32_t *value)
 {
-	const unsigned num_bits = size * 8;
+	const unsigned int num_bits = size * 8;
 
 	if (*pos+count > num_bits)
 		return ERROR_FAIL;
@@ -301,7 +301,7 @@ static int esirisc_trace_buf_get_u32(uint8_t *buffer, uint32_t size,
 }
 
 static int esirisc_trace_buf_get_pc(struct target *target, uint8_t *buffer, uint32_t size,
-		unsigned *pos, uint32_t *value)
+		unsigned int *pos, uint32_t *value)
 {
 	struct esirisc_common *esirisc = target_to_esirisc(target);
 	struct esirisc_trace *trace_info = &esirisc->trace_info;
@@ -326,7 +326,7 @@ static int esirisc_trace_read_memory(struct target *target, target_addr_t addres
 
 	retval = target_read_memory(target, address, 1, size, buffer);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to read trace data", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to read trace data");
 		return retval;
 	}
 
@@ -346,7 +346,7 @@ static int esirisc_trace_read_buffer(struct target *target, uint8_t *buffer)
 
 	retval = esirisc_jtag_read_csr(jtag_info, CSR_TRACE, CSR_TRACE_BUFFER_CUR, &buffer_cur);
 	if (retval != ERROR_OK) {
-		LOG_ERROR("%s: failed to read Trace CSR: BufferCurrent", target_name(target));
+		LOG_TARGET_ERROR(target, "failed to read Trace CSR: BufferCurrent");
 		return retval;
 	}
 
@@ -380,7 +380,7 @@ static int esirisc_trace_analyze_full(struct command_invocation *cmd, uint8_t *b
 	const uint32_t num_bits = size * 8;
 	int retval;
 
-	unsigned pos = 0;
+	unsigned int pos = 0;
 	while (pos < num_bits) {
 		uint32_t id;
 
@@ -389,84 +389,87 @@ static int esirisc_trace_analyze_full(struct command_invocation *cmd, uint8_t *b
 			goto fail;
 
 		switch (id) {
-			case ESIRISC_TRACE_ID_EXECUTE:
-			case ESIRISC_TRACE_ID_STALL:
-			case ESIRISC_TRACE_ID_BRANCH:
-				command_print(cmd, "%s", esirisc_trace_id_strings[id]);
+		case ESIRISC_TRACE_ID_EXECUTE:
+		case ESIRISC_TRACE_ID_STALL:
+		case ESIRISC_TRACE_ID_BRANCH:
+			command_print(cmd, "%s", esirisc_trace_id_strings[id]);
+			break;
+
+		case ESIRISC_TRACE_ID_EXTENDED: {
+			uint32_t ext_id;
+
+			retval = esirisc_trace_buf_get_u32(buffer, size, &pos, 4, &ext_id);
+			if (retval != ERROR_OK)
+				goto fail;
+
+			switch (ext_id) {
+			case ESIRISC_TRACE_EXT_ID_STOP:
+			case ESIRISC_TRACE_EXT_ID_WAIT:
+			case ESIRISC_TRACE_EXT_ID_MULTICYCLE:
+				command_print(cmd, "%s", esirisc_trace_ext_id_strings[ext_id]);
 				break;
 
-			case ESIRISC_TRACE_ID_EXTENDED: {
-				uint32_t ext_id;
+			case ESIRISC_TRACE_EXT_ID_ERET:
+			case ESIRISC_TRACE_EXT_ID_PC:
+			case ESIRISC_TRACE_EXT_ID_INDIRECT:
+			case ESIRISC_TRACE_EXT_ID_END_PC: {
+				uint32_t pc;
 
-				retval = esirisc_trace_buf_get_u32(buffer, size, &pos, 4, &ext_id);
+				retval = esirisc_trace_buf_get_pc(target, buffer, size, &pos, &pc);
 				if (retval != ERROR_OK)
 					goto fail;
 
-				switch (ext_id) {
-					case ESIRISC_TRACE_EXT_ID_STOP:
-					case ESIRISC_TRACE_EXT_ID_WAIT:
-					case ESIRISC_TRACE_EXT_ID_MULTICYCLE:
-						command_print(cmd, "%s", esirisc_trace_ext_id_strings[ext_id]);
-						break;
+				command_print(cmd, "%s PC: 0x%" PRIx32,
+						esirisc_trace_ext_id_strings[ext_id], pc);
 
-					case ESIRISC_TRACE_EXT_ID_ERET:
-					case ESIRISC_TRACE_EXT_ID_PC:
-					case ESIRISC_TRACE_EXT_ID_INDIRECT:
-					case ESIRISC_TRACE_EXT_ID_END_PC: {
-						uint32_t pc;
-
-						retval = esirisc_trace_buf_get_pc(target, buffer, size, &pos, &pc);
-						if (retval != ERROR_OK)
-							goto fail;
-
-						command_print(cmd, "%s PC: 0x%" PRIx32,
-								esirisc_trace_ext_id_strings[ext_id], pc);
-
-						if (ext_id == ESIRISC_TRACE_EXT_ID_END_PC) {
-							command_print(cmd, "--- end of trace ---");
-							return ERROR_OK;
-						}
-						break;
-					}
-					case ESIRISC_TRACE_EXT_ID_EXCEPTION: {
-						uint32_t eid, epc;
-
-						retval = esirisc_trace_buf_get_u32(buffer, size, &pos, 6, &eid);
-						if (retval != ERROR_OK)
-							goto fail;
-
-						retval = esirisc_trace_buf_get_pc(target, buffer, size, &pos, &epc);
-						if (retval != ERROR_OK)
-							goto fail;
-
-						command_print(cmd, "%s EID: 0x%" PRIx32 ", EPC: 0x%" PRIx32,
-								esirisc_trace_ext_id_strings[ext_id], eid, epc);
-						break;
-					}
-					case ESIRISC_TRACE_EXT_ID_COUNT: {
-						uint32_t count;
-
-						retval = esirisc_trace_buf_get_u32(buffer, size, &pos, 6, &count);
-						if (retval != ERROR_OK)
-							goto fail;
-
-						command_print(cmd, "repeats %" PRIu32 " %s", count,
-								(count == 1) ? "time" : "times");
-						break;
-					}
-					case ESIRISC_TRACE_EXT_ID_END:
-						command_print(cmd, "--- end of trace ---");
-						return ERROR_OK;
-
-					default:
-						command_print(cmd, "invalid extended trace ID: %" PRIu32, ext_id);
-						return ERROR_FAIL;
+				if (ext_id == ESIRISC_TRACE_EXT_ID_END_PC) {
+					command_print(cmd, "--- end of trace ---");
+					return ERROR_OK;
 				}
 				break;
 			}
+
+			case ESIRISC_TRACE_EXT_ID_EXCEPTION: {
+				uint32_t eid, epc;
+
+				retval = esirisc_trace_buf_get_u32(buffer, size, &pos, 6, &eid);
+				if (retval != ERROR_OK)
+					goto fail;
+
+				retval = esirisc_trace_buf_get_pc(target, buffer, size, &pos, &epc);
+				if (retval != ERROR_OK)
+					goto fail;
+
+				command_print(cmd, "%s EID: 0x%" PRIx32 ", EPC: 0x%" PRIx32,
+						esirisc_trace_ext_id_strings[ext_id], eid, epc);
+				break;
+			}
+
+			case ESIRISC_TRACE_EXT_ID_COUNT: {
+				uint32_t count;
+
+				retval = esirisc_trace_buf_get_u32(buffer, size, &pos, 6, &count);
+				if (retval != ERROR_OK)
+					goto fail;
+
+				command_print(cmd, "repeats %" PRIu32 " %s", count,
+						(count == 1) ? "time" : "times");
+				break;
+			}
+
+			case ESIRISC_TRACE_EXT_ID_END:
+				command_print(cmd, "--- end of trace ---");
+				return ERROR_OK;
+
 			default:
-				command_print(cmd, "invalid trace ID: %" PRIu32, id);
+				command_print(cmd, "invalid extended trace ID: %" PRIu32, ext_id);
 				return ERROR_FAIL;
+			}
+			break;
+		}
+		default:
+			command_print(cmd, "invalid trace ID: %" PRIu32, id);
+			return ERROR_FAIL;
 		}
 	}
 
@@ -484,7 +487,7 @@ static int esirisc_trace_analyze_simple(struct command_invocation *cmd, uint8_t 
 	const uint32_t num_bits = size * 8;
 	int retval;
 
-	unsigned pos = 0;
+	unsigned int pos = 0;
 	while (pos < num_bits) {
 		uint32_t pc;
 
@@ -511,21 +514,21 @@ static int esirisc_trace_analyze(struct command_invocation *cmd, uint8_t *buffer
 	struct esirisc_trace *trace_info = &esirisc->trace_info;
 
 	switch (trace_info->format) {
-		case ESIRISC_TRACE_FORMAT_FULL:
-			command_print(cmd, "--- full pipeline ---");
-			return esirisc_trace_analyze_full(cmd, buffer, size);
+	case ESIRISC_TRACE_FORMAT_FULL:
+		command_print(cmd, "--- full pipeline ---");
+		return esirisc_trace_analyze_full(cmd, buffer, size);
 
-		case ESIRISC_TRACE_FORMAT_BRANCH:
-			command_print(cmd, "--- branches taken ---");
-			return esirisc_trace_analyze_full(cmd, buffer, size);
+	case ESIRISC_TRACE_FORMAT_BRANCH:
+		command_print(cmd, "--- branches taken ---");
+		return esirisc_trace_analyze_full(cmd, buffer, size);
 
-		case ESIRISC_TRACE_FORMAT_ICACHE:
-			command_print(cmd, "--- icache misses ---");
-			return esirisc_trace_analyze_simple(cmd, buffer, size);
+	case ESIRISC_TRACE_FORMAT_ICACHE:
+		command_print(cmd, "--- icache misses ---");
+		return esirisc_trace_analyze_simple(cmd, buffer, size);
 
-		default:
-			command_print(cmd, "invalid trace format: %i", trace_info->format);
-			return ERROR_FAIL;
+	default:
+		command_print(cmd, "invalid trace format: %i", trace_info->format);
+		return ERROR_FAIL;
 	}
 }
 

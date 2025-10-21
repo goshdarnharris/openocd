@@ -22,6 +22,7 @@
 #include "target_request.h"
 #include "target_type.h"
 #include "helper/bits.h"
+#include "rtt/rtt.h"
 
 #include "arc_jtag.h"
 #include "arc_cmd.h"
@@ -247,16 +248,6 @@ struct arc_common {
 	do {					\
 		int __retval = (action);	\
 		if (__retval != ERROR_OK) {	\
-			LOG_DEBUG("error while calling \"%s\"",	\
-				# action);     \
-			return __retval;	\
-		}				\
-	} while (0)
-
-#define JIM_CHECK_RETVAL(action)		\
-	do {					\
-		int __retval = (action);	\
-		if (__retval != JIM_OK) {	\
 			LOG_DEBUG("error while calling \"%s\"",	\
 				# action);     \
 			return __retval;	\

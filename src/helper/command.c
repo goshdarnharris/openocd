@@ -18,9 +18,6 @@
 #include "config.h"
 #endif
 
-/* see Embedded-HOWTO.txt in Jim Tcl project hosted on BerliOS*/
-#define JIM_EMBEDDED
-
 /* @todo the inclusion of target.h here is a layering violation */
 #include <jtag/jtag.h>
 #include <target/target.h>
@@ -34,8 +31,7 @@
 #define __THIS__FILE__ "command.c"
 
 struct log_capture_state {
-	Jim_Interp *interp;
-	Jim_Obj *output;
+	char *output;
 };
 
 static int unregister_command(struct command_context *context,
@@ -44,95 +40,27 @@ static int jim_command_dispatch(Jim_Interp *interp, int argc, Jim_Obj * const *a
 static int help_add_command(struct command_context *cmd_ctx,
 	const char *cmd_name, const char *help_text, const char *usage_text);
 static int help_del_command(struct command_context *cmd_ctx, const char *cmd_name);
+static enum command_mode get_command_mode(Jim_Interp *interp, const char *cmd_name);
 
 /* set of functions to wrap jimtcl internal data */
 static inline bool jimcmd_is_proc(Jim_Cmd *cmd)
 {
+#if defined(JIM_CMD_ISPROC)
+	// JIM_VERSION >= 84
+	return cmd->flags & JIM_CMD_ISPROC;
+#else
 	return cmd->isproc;
+#endif
 }
 
 bool jimcmd_is_oocd_command(Jim_Cmd *cmd)
 {
-	return !cmd->isproc && cmd->u.native.cmdProc == jim_command_dispatch;
+	return !jimcmd_is_proc(cmd) && cmd->u.native.cmdProc == jim_command_dispatch;
 }
 
 void *jimcmd_privdata(Jim_Cmd *cmd)
 {
-	return cmd->isproc ? NULL : cmd->u.native.privData;
-}
-
-static void tcl_output(void *privData, const char *file, unsigned line,
-	const char *function, const char *string)
-{
-	struct log_capture_state *state = privData;
-	Jim_AppendString(state->interp, state->output, string, strlen(string));
-}
-
-static struct log_capture_state *command_log_capture_start(Jim_Interp *interp)
-{
-	/* capture log output and return it. A garbage collect can
-	 * happen, so we need a reference count to this object */
-	Jim_Obj *jim_output = Jim_NewStringObj(interp, "", 0);
-	if (!jim_output)
-		return NULL;
-
-	Jim_IncrRefCount(jim_output);
-
-	struct log_capture_state *state = malloc(sizeof(*state));
-	if (!state) {
-		LOG_ERROR("Out of memory");
-		Jim_DecrRefCount(interp, jim_output);
-		return NULL;
-	}
-
-	state->interp = interp;
-	state->output = jim_output;
-
-	log_add_callback(tcl_output, state);
-
-	return state;
-}
-
-/* Classic openocd commands provide progress output which we
- * will capture and return as a Tcl return value.
- *
- * However, if a non-openocd command has been invoked, then it
- * makes sense to return the tcl return value from that command.
- *
- * The tcl return value is empty for openocd commands that provide
- * progress output.
- *
- * Therefore we set the tcl return value only if we actually
- * captured output.
- */
-static void command_log_capture_finish(struct log_capture_state *state)
-{
-	if (!state)
-		return;
-
-	log_remove_callback(tcl_output, state);
-
-	int length;
-	Jim_GetString(state->output, &length);
-
-	if (length > 0)
-		Jim_SetResult(state->interp, state->output);
-	else {
-		/* No output captured, use tcl return value (which could
-		 * be empty too). */
-	}
-	Jim_DecrRefCount(state->interp, state->output);
-
-	free(state);
-}
-
-static int command_retval_set(Jim_Interp *interp, int retval)
-{
-	int *return_retval = Jim_GetAssocData(interp, "retval");
-	if (return_retval)
-		*return_retval = retval;
-
-	return (retval == ERROR_OK) ? JIM_OK : retval;
+	return jimcmd_is_proc(cmd) ? NULL : cmd->u.native.privData;
 }
 
 extern struct command_context *global_cmd_ctx;
@@ -141,47 +69,18 @@ extern struct command_context *global_cmd_ctx;
  * Do nothing in case we are not at debug level 3 */
 static void script_debug(Jim_Interp *interp, unsigned int argc, Jim_Obj * const *argv)
 {
-	if (debug_level < LOG_LVL_DEBUG)
+	if (!LOG_LEVEL_IS(LOG_LVL_DEBUG))
 		return;
 
 	char *dbg = alloc_printf("command -");
-	for (unsigned i = 0; i < argc; i++) {
-		int len;
-		const char *w = Jim_GetString(argv[i], &len);
+	for (unsigned int i = 0; i < argc; i++) {
+		const char *w = Jim_GetString(argv[i], NULL);
 		char *t = alloc_printf("%s %s", dbg, w);
 		free(dbg);
 		dbg = t;
 	}
 	LOG_DEBUG("%s", dbg);
 	free(dbg);
-}
-
-static void script_command_args_free(char **words, unsigned nwords)
-{
-	for (unsigned i = 0; i < nwords; i++)
-		free(words[i]);
-	free(words);
-}
-
-static char **script_command_args_alloc(
-	unsigned argc, Jim_Obj * const *argv, unsigned *nwords)
-{
-	char **words = malloc(argc * sizeof(char *));
-	if (!words)
-		return NULL;
-
-	unsigned i;
-	for (i = 0; i < argc; i++) {
-		int len;
-		const char *w = Jim_GetString(argv[i], &len);
-		words[i] = strdup(w);
-		if (!words[i]) {
-			script_command_args_free(words, i);
-			return NULL;
-		}
-	}
-	*nwords = i;
-	return words;
 }
 
 struct command_context *current_command_context(Jim_Interp *interp)
@@ -227,13 +126,13 @@ static struct command *command_new(struct command_context *cmd_ctx,
 	assert(cr->name);
 
 	/*
-	 * If it is a non-jim command with no .usage specified,
+	 * If it is a command with no .usage specified,
 	 * log an error.
 	 *
 	 * strlen(.usage) == 0 means that the command takes no
 	 * arguments.
 	*/
-	if (!cr->jim_handler && !cr->usage)
+	if (!cr->usage)
 		LOG_ERROR("BUG: command '%s' does not have the "
 			"'.usage' field filled out",
 			full_name);
@@ -249,7 +148,6 @@ static struct command *command_new(struct command_context *cmd_ctx,
 	}
 
 	c->handler = cr->handler;
-	c->jim_handler = cr->jim_handler;
 	c->mode = cr->mode;
 
 	if (cr->help || cr->usage)
@@ -318,7 +216,7 @@ int __register_commands(struct command_context *cmd_ctx, const char *cmd_prefix,
 	struct target *override_target)
 {
 	int retval = ERROR_OK;
-	unsigned i;
+	unsigned int i;
 	for (i = 0; cmds[i].name || cmds[i].chain; i++) {
 		const struct command_registration *cr = cmds + i;
 
@@ -353,7 +251,7 @@ int __register_commands(struct command_context *cmd_ctx, const char *cmd_prefix,
 		}
 	}
 	if (retval != ERROR_OK) {
-		for (unsigned j = 0; j < i; j++)
+		for (unsigned int j = 0; j < i; j++)
 			unregister_command(cmd_ctx, cmd_prefix, cmds[j].name);
 	}
 	return retval;
@@ -503,31 +401,42 @@ static bool command_can_run(struct command_context *cmd_ctx, struct command *c, 
 	/* Many commands may be run only before/after 'init' */
 	const char *when;
 	switch (c->mode) {
-		case COMMAND_CONFIG:
-			when = "before";
-			break;
-		case COMMAND_EXEC:
-			when = "after";
-			break;
-		/* handle the impossible with humor; it guarantees a bug report! */
-		default:
-			when = "if Cthulhu is summoned by";
-			break;
+	case COMMAND_CONFIG:
+		when = "before";
+		break;
+	case COMMAND_EXEC:
+		when = "after";
+		break;
+	/* handle the impossible with humor; it guarantees a bug report! */
+	default:
+		when = "if Cthulhu is summoned by";
+		break;
 	}
 	LOG_ERROR("The '%s' command must be used %s 'init'.",
 			full_name ? full_name : c->name, when);
 	return false;
 }
 
-static int run_command(struct command_context *context,
-	struct command *c, const char **words, unsigned num_words)
+static int jim_exec_command(Jim_Interp *interp, struct command_context *context,
+		struct command *c, int argc, Jim_Obj * const *argv)
 {
+	/* use c->handler */
+	const char **words = malloc(argc * sizeof(char *));
+	if (!words) {
+		LOG_ERROR("Out of memory");
+		return JIM_ERR;
+	}
+
+	for (int i = 0; i < argc; i++)
+		words[i] = Jim_GetString(argv[i], NULL);
+
 	struct command_invocation cmd = {
 		.ctx = context,
 		.current = c,
 		.name = c->name,
-		.argc = num_words - 1,
+		.argc = argc - 1,
 		.argv = words + 1,
+		.jimtcl_argv = argv + 1,
 	};
 
 	cmd.output = Jim_NewEmptyStringObj(context->interp);
@@ -543,12 +452,29 @@ static int run_command(struct command_context *context,
 		if (retval != ERROR_OK)
 			LOG_DEBUG("Command '%s' failed with error code %d",
 						words[0], retval);
-		/* Use the command output as the Tcl result */
-		Jim_SetResult(context->interp, cmd.output);
+		/*
+		 * Use the command output as the Tcl result.
+		 * Drop last '\n' to allow command output concatenation
+		 * while keep using command_print() everywhere.
+		 */
+		const char *output_txt = Jim_String(cmd.output);
+		int len = strlen(output_txt);
+		if (len && output_txt[len - 1] == '\n')
+			--len;
+		Jim_SetResultString(context->interp, output_txt, len);
 	}
 	Jim_DecrRefCount(context->interp, cmd.output);
 
-	return retval;
+	free(words);
+
+	if (retval == ERROR_OK)
+		return JIM_OK;
+
+	// used by telnet server to close one connection
+	if (retval == ERROR_COMMAND_CLOSE_CONNECTION)
+		return JIM_EXIT;
+
+	return JIM_ERR;
 }
 
 int command_run_line(struct command_context *context, char *line)
@@ -558,7 +484,6 @@ int command_run_line(struct command_context *context, char *line)
 	 * results
 	 */
 	/* run the line thru a script engine */
-	int retval = ERROR_FAIL;
 	int retcode;
 	/* Beware! This code needs to be reentrant. It is also possible
 	 * for OpenOCD commands to be invoked directly from Tcl. This would
@@ -573,20 +498,17 @@ int command_run_line(struct command_context *context, char *line)
 	Jim_DeleteAssocData(interp, "context");
 	retcode = Jim_SetAssocData(interp, "context", NULL, context);
 	if (retcode == JIM_OK) {
-		/* associated the return value */
-		Jim_DeleteAssocData(interp, "retval");
-		retcode = Jim_SetAssocData(interp, "retval", NULL, &retval);
-		if (retcode == JIM_OK) {
-			retcode = Jim_Eval_Named(interp, line, 0, 0);
-
-			Jim_DeleteAssocData(interp, "retval");
-		}
+		retcode = Jim_Eval_Named(interp, line, NULL, 0);
 		Jim_DeleteAssocData(interp, "context");
 		int inner_retcode = Jim_SetAssocData(interp, "context", NULL, old_context);
 		if (retcode == JIM_OK)
 			retcode = inner_retcode;
 	}
 	context->current_target_override = saved_target_override;
+
+	if (retcode == JIM_RETURN)
+		retcode = interp->returnCode;
+
 	if (retcode == JIM_OK) {
 		const char *result;
 		int reslen;
@@ -596,25 +518,19 @@ int command_run_line(struct command_context *context, char *line)
 			command_output_text(context, result);
 			command_output_text(context, "\n");
 		}
-		retval = ERROR_OK;
-	} else if (retcode == JIM_EXIT) {
-		/* ignore.
-		 * exit(Jim_GetExitCode(interp)); */
-	} else if (retcode == ERROR_COMMAND_CLOSE_CONNECTION) {
-		return retcode;
-	} else {
-		Jim_MakeErrorMessage(interp);
-		/* error is broadcast */
-		LOG_USER("%s", Jim_GetString(Jim_GetResult(interp), NULL));
-
-		if (retval == ERROR_OK) {
-			/* It wasn't a low level OpenOCD command that failed */
-			return ERROR_FAIL;
-		}
-		return retval;
+		return ERROR_OK;
 	}
 
-	return retval;
+	if (retcode == JIM_EXIT) {
+		// used by telnet server to close one connection
+		return ERROR_COMMAND_CLOSE_CONNECTION;
+	}
+
+	Jim_MakeErrorMessage(interp);
+	/* error is broadcast */
+	LOG_USER("%s", Jim_GetString(Jim_GetResult(interp), NULL));
+
+	return ERROR_FAIL;
 }
 
 int command_run_linef(struct command_context *context, const char *format, ...)
@@ -657,19 +573,19 @@ void command_done(struct command_context *cmd_ctx)
 }
 
 /* find full path to file */
-static int jim_find(Jim_Interp *interp, int argc, Jim_Obj *const *argv)
+COMMAND_HANDLER(handle_find)
 {
-	if (argc != 2)
-		return JIM_ERR;
-	const char *file = Jim_GetString(argv[1], NULL);
-	char *full_path = find_file(file);
+	if (CMD_ARGC != 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	char *full_path = find_file(CMD_ARGV[0]);
 	if (!full_path)
-		return JIM_ERR;
-	Jim_Obj *result = Jim_NewStringObj(interp, full_path, strlen(full_path));
+		return ERROR_COMMAND_ARGUMENT_INVALID;
+
+	command_print(CMD, "%s", full_path);
 	free(full_path);
 
-	Jim_SetResult(interp, result);
-	return JIM_OK;
+	return ERROR_OK;
 }
 
 COMMAND_HANDLER(handle_echo)
@@ -680,21 +596,34 @@ COMMAND_HANDLER(handle_echo)
 	}
 
 	if (CMD_ARGC != 1)
-		return ERROR_FAIL;
+		return ERROR_COMMAND_SYNTAX_ERROR;
 
 	LOG_USER("%s", CMD_ARGV[0]);
 	return ERROR_OK;
 }
 
-/* Capture progress output and return as tcl return value. If the
- * progress output was empty, return tcl return value.
- */
-static int jim_capture(Jim_Interp *interp, int argc, Jim_Obj *const *argv)
+static void tcl_output(void *privData, const char *file, unsigned int line,
+	const char *function, const char *string)
 {
-	if (argc != 2)
-		return JIM_ERR;
+	struct log_capture_state *state = privData;
+	char *old = state->output;
 
-	struct log_capture_state *state = command_log_capture_start(interp);
+	state->output = alloc_printf("%s%s", old ? old : "", string);
+	free(old);
+	if (!state->output)
+		LOG_ERROR("Out of memory");
+}
+
+/*
+ * Return both the progress output (LOG_INFO and higher)
+ * and the tcl return value of a command.
+ */
+COMMAND_HANDLER(handle_command_capture)
+{
+	struct log_capture_state state = {NULL};
+
+	if (CMD_ARGC != 1)
+		return ERROR_COMMAND_SYNTAX_ERROR;
 
 	/* disable polling during capture. This avoids capturing output
 	 * from polling.
@@ -704,14 +633,24 @@ static int jim_capture(Jim_Interp *interp, int argc, Jim_Obj *const *argv)
 	 */
 	bool save_poll_mask = jtag_poll_mask();
 
-	const char *str = Jim_GetString(argv[1], NULL);
-	int retcode = Jim_Eval_Named(interp, str, __THIS__FILE__, __LINE__);
+	log_add_callback(tcl_output, &state);
+
+	int jimretval = Jim_EvalObj(CMD_CTX->interp, CMD_JIMTCL_ARGV[0]);
+	const char *cmd_result = Jim_GetString(Jim_GetResult(CMD_CTX->interp), NULL);
+
+	log_remove_callback(tcl_output, &state);
 
 	jtag_poll_unmask(save_poll_mask);
 
-	command_log_capture_finish(state);
+	if (state.output && *state.output)
+		command_print(CMD, "%s", state.output);
 
-	return retcode;
+	if (cmd_result && *cmd_result)
+		command_print(CMD, "%s", cmd_result);
+
+	free(state.output);
+
+	return (jimretval == JIM_OK) ? ERROR_OK : ERROR_FAIL;
 }
 
 struct help_entry {
@@ -735,12 +674,12 @@ static COMMAND_HELPER(command_help_show_list, bool show_help, const char *cmd_ma
 
 #define HELP_LINE_WIDTH(_n) (int)(76 - (2 * _n))
 
-static void command_help_show_indent(unsigned n)
+static void command_help_show_indent(unsigned int n)
 {
-	for (unsigned i = 0; i < n; i++)
+	for (unsigned int i = 0; i < n; i++)
 		LOG_USER_N("  ");
 }
-static void command_help_show_wrap(const char *str, unsigned n, unsigned n2)
+static void command_help_show_wrap(const char *str, unsigned int n, unsigned int n2)
 {
 	const char *cp = str, *last = str;
 	while (*cp) {
@@ -786,49 +725,35 @@ static COMMAND_HELPER(command_help_show, struct help_entry *c,
 	if (is_match && show_help) {
 		char *msg;
 
-		/* TODO: factorize jim_command_mode() to avoid running jim command here */
-		char *request = alloc_printf("command mode %s", c->cmd_name);
-		if (!request) {
-			LOG_ERROR("Out of memory");
-			return ERROR_FAIL;
-		}
-		int retval = Jim_Eval(CMD_CTX->interp, request);
-		free(request);
-		enum command_mode mode = COMMAND_UNKNOWN;
-		if (retval != JIM_ERR) {
-			const char *result = Jim_GetString(Jim_GetResult(CMD_CTX->interp), NULL);
-			if (!strcmp(result, "any"))
-				mode = COMMAND_ANY;
-			else if (!strcmp(result, "config"))
-				mode = COMMAND_CONFIG;
-			else if (!strcmp(result, "exec"))
-				mode = COMMAND_EXEC;
-		}
+		enum command_mode mode = get_command_mode(CMD_CTX->interp, c->cmd_name);
 
 		/* Normal commands are runtime-only; highlight exceptions */
 		if (mode != COMMAND_EXEC) {
 			const char *stage_msg = "";
 
 			switch (mode) {
-				case COMMAND_CONFIG:
-					stage_msg = " (configuration command)";
-					break;
-				case COMMAND_ANY:
-					stage_msg = " (command valid any time)";
-					break;
-				default:
-					stage_msg = " (?mode error?)";
-					break;
+			case COMMAND_CONFIG:
+				stage_msg = " (configuration command)";
+				break;
+			case COMMAND_ANY:
+				stage_msg = " (command valid any time)";
+				break;
+			case COMMAND_UNKNOWN:
+			default:
+				stage_msg = " (?mode error?)";
+				break;
 			}
 			msg = alloc_printf("%s%s", c->help ? c->help : "", stage_msg);
 		} else
 			msg = alloc_printf("%s", c->help ? c->help : "");
 
-		if (msg) {
-			command_help_show_wrap(msg, n + 3, n + 3);
-			free(msg);
-		} else
-			return -ENOMEM;
+		if (!msg) {
+			LOG_ERROR("Out of memory");
+			return ERROR_FAIL;
+		}
+
+		command_help_show_wrap(msg, n + 3, n + 3);
+		free(msg);
 	}
 
 	return ERROR_OK;
@@ -863,22 +788,19 @@ COMMAND_HANDLER(handle_help_command)
 	return retval;
 }
 
-static char *alloc_concatenate_strings(int argc, Jim_Obj * const *argv)
+static char *alloc_concatenate_strings(int argc, const char **argv)
 {
-	char *prev, *all;
-	int i;
-
 	assert(argc >= 1);
 
-	all = strdup(Jim_GetString(argv[0], NULL));
+	char *all = strdup(argv[0]);
 	if (!all) {
 		LOG_ERROR("Out of memory");
 		return NULL;
 	}
 
-	for (i = 1; i < argc; ++i) {
-		prev = all;
-		all = alloc_printf("%s %s", all, Jim_GetString(argv[i], NULL));
+	for (int i = 1; i < argc; ++i) {
+		char *prev = all;
+		all = alloc_printf("%s %s", all, argv[i]);
 		free(prev);
 		if (!all) {
 			LOG_ERROR("Out of memory");
@@ -887,23 +809,6 @@ static char *alloc_concatenate_strings(int argc, Jim_Obj * const *argv)
 	}
 
 	return all;
-}
-
-static int exec_command(Jim_Interp *interp, struct command_context *cmd_ctx,
-		struct command *c, int argc, Jim_Obj * const *argv)
-{
-	if (c->jim_handler)
-		return c->jim_handler(interp, argc, argv);
-
-	/* use c->handler */
-	unsigned int nwords;
-	char **words = script_command_args_alloc(argc, argv, &nwords);
-	if (!words)
-		return JIM_ERR;
-
-	int retval = run_command(cmd_ctx, c, (const char **)words, nwords);
-	script_command_args_free(words, nwords);
-	return command_retval_set(interp, retval);
 }
 
 static int jim_command_dispatch(Jim_Interp *interp, int argc, Jim_Obj * const *argv)
@@ -926,7 +831,7 @@ static int jim_command_dispatch(Jim_Interp *interp, int argc, Jim_Obj * const *a
 	script_debug(interp, argc, argv);
 
 	struct command *c = jim_to_command(interp);
-	if (!c->jim_handler && !c->handler) {
+	if (!c->handler) {
 		Jim_EvalObjPrefix(interp, Jim_NewStringObj(interp, "usage", -1), 1, argv);
 		return JIM_ERR;
 	}
@@ -936,19 +841,7 @@ static int jim_command_dispatch(Jim_Interp *interp, int argc, Jim_Obj * const *a
 	if (!command_can_run(cmd_ctx, c, Jim_GetString(argv[0], NULL)))
 		return JIM_ERR;
 
-	/*
-	 * TODO: to be removed after v0.12.0
-	 * workaround for https://sourceforge.net/p/openocd/tickets/362/
-	 * After syntax change of "expr" in jimtcl 0.81
-	 * the replacement of jimtcl "expr" with openocd version in
-	 * https://review.openocd.org/6510/
-	 * introduces too many target polling during math expressions with
-	 * "expr" commands.
-	 * After v0.12.0 replace the following two lines with
-	 * target_call_timer_callbacks();
-	 */
-	if (strcmp(c->name, "expr"))
-		target_call_timer_callbacks_now();
+	target_call_timer_callbacks();
 
 	/*
 	 * Black magic of overridden current target:
@@ -964,7 +857,7 @@ static int jim_command_dispatch(Jim_Interp *interp, int argc, Jim_Obj * const *a
 	if (c->jim_override_target)
 		cmd_ctx->current_target_override = c->jim_override_target;
 
-	int retval = exec_command(interp, cmd_ctx, c, argc, argv);
+	int retval = jim_exec_command(interp, cmd_ctx, c, argc, argv);
 
 	if (c->jim_override_target)
 		cmd_ctx->current_target_override = saved_target_override;
@@ -972,53 +865,59 @@ static int jim_command_dispatch(Jim_Interp *interp, int argc, Jim_Obj * const *a
 	return retval;
 }
 
-static int jim_command_mode(Jim_Interp *interp, int argc, Jim_Obj *const *argv)
+static enum command_mode get_command_mode(Jim_Interp *interp, const char *cmd_name)
 {
-	struct command_context *cmd_ctx = current_command_context(interp);
-	enum command_mode mode;
+	if (!cmd_name)
+		return COMMAND_UNKNOWN;
 
-	if (argc > 1) {
-		char *full_name = alloc_concatenate_strings(argc - 1, argv + 1);
+	Jim_Obj *s = Jim_NewStringObj(interp, cmd_name, -1);
+	Jim_IncrRefCount(s);
+	Jim_Cmd *cmd = Jim_GetCommand(interp, s, JIM_NONE);
+	Jim_DecrRefCount(interp, s);
+
+	if (!cmd || !(jimcmd_is_proc(cmd) || jimcmd_is_oocd_command(cmd)))
+		return COMMAND_UNKNOWN;
+
+	/* tcl proc */
+	if (jimcmd_is_proc(cmd))
+		return COMMAND_ANY;
+
+	struct command *c = jimcmd_privdata(cmd);
+	return c->mode;
+}
+
+COMMAND_HANDLER(handle_command_mode)
+{
+	enum command_mode mode = CMD_CTX->mode;
+
+	if (CMD_ARGC) {
+		char *full_name = alloc_concatenate_strings(CMD_ARGC, CMD_ARGV);
 		if (!full_name)
-			return JIM_ERR;
-		Jim_Obj *s = Jim_NewStringObj(interp, full_name, -1);
-		Jim_IncrRefCount(s);
-		Jim_Cmd *cmd = Jim_GetCommand(interp, s, JIM_NONE);
-		Jim_DecrRefCount(interp, s);
+			return ERROR_FAIL;
+
+		mode = get_command_mode(CMD_CTX->interp, full_name);
+
 		free(full_name);
-		if (!cmd || !(jimcmd_is_proc(cmd) || jimcmd_is_oocd_command(cmd))) {
-			Jim_SetResultString(interp, "unknown", -1);
-			return JIM_OK;
-		}
-
-		if (jimcmd_is_proc(cmd)) {
-			/* tcl proc */
-			mode = COMMAND_ANY;
-		} else {
-			struct command *c = jimcmd_privdata(cmd);
-
-			mode = c->mode;
-		}
-	} else
-		mode = cmd_ctx->mode;
+	}
 
 	const char *mode_str;
 	switch (mode) {
-		case COMMAND_ANY:
-			mode_str = "any";
-			break;
-		case COMMAND_CONFIG:
-			mode_str = "config";
-			break;
-		case COMMAND_EXEC:
-			mode_str = "exec";
-			break;
-		default:
-			mode_str = "unknown";
-			break;
+	case COMMAND_ANY:
+		mode_str = "any";
+		break;
+	case COMMAND_CONFIG:
+		mode_str = "config";
+		break;
+	case COMMAND_EXEC:
+		mode_str = "exec";
+		break;
+	case COMMAND_UNKNOWN:
+	default:
+		mode_str = "unknown";
+		break;
 	}
-	Jim_SetResultString(interp, mode_str, -1);
-	return JIM_OK;
+	command_print(CMD, "%s", mode_str);
+	return ERROR_OK;
 }
 
 int help_del_all_commands(struct command_context *cmd_ctx)
@@ -1157,7 +1056,7 @@ static const struct command_registration command_subcommand_handlers[] = {
 	{
 		.name = "mode",
 		.mode = COMMAND_ANY,
-		.jim_handler = jim_command_mode,
+		.handler = handle_command_mode,
 		.usage = "[command_name ...]",
 		.help = "Returns the command modes allowed by a command: "
 			"'any', 'config', or 'exec'. If no command is "
@@ -1172,14 +1071,14 @@ static const struct command_registration command_builtin_handlers[] = {
 	{
 		.name = "ocd_find",
 		.mode = COMMAND_ANY,
-		.jim_handler = jim_find,
+		.handler = handle_find,
 		.help = "find full path to file",
 		.usage = "file",
 	},
 	{
 		.name = "capture",
 		.mode = COMMAND_ANY,
-		.jim_handler = jim_capture,
+		.handler = handle_command_capture,
 		.help = "Capture progress output and return as tcl return value. If the "
 				"progress output was empty, return tcl return value.",
 		.usage = "command",
@@ -1353,7 +1252,7 @@ DEFINE_PARSE_NUM_TYPE(_llong, long long, strtoll, LLONG_MIN, LLONG_MAX)
 
 #define DEFINE_PARSE_ULONGLONG(name, type, min, max) \
 	DEFINE_PARSE_WRAPPER(name, type, min, max, unsigned long long, _ullong)
-DEFINE_PARSE_ULONGLONG(_uint, unsigned, 0, UINT_MAX)
+DEFINE_PARSE_ULONGLONG(_uint, unsigned int, 0, UINT_MAX)
 DEFINE_PARSE_ULONGLONG(_u64,  uint64_t, 0, UINT64_MAX)
 DEFINE_PARSE_ULONGLONG(_u32,  uint32_t, 0, UINT32_MAX)
 DEFINE_PARSE_ULONGLONG(_u16,  uint16_t, 0, UINT16_MAX)
@@ -1396,22 +1295,43 @@ int command_parse_bool_arg(const char *in, bool *out)
 	return ERROR_COMMAND_SYNTAX_ERROR;
 }
 
+COMMAND_HELPER(command_parse_str_to_buf, const char *str, void *buf, unsigned int buf_len)
+{
+	assert(str);
+	assert(buf);
+
+	int ret = str_to_buf(str, buf, buf_len);
+	if (ret == ERROR_OK)
+		return ret;
+
+	/* Provide a clear error message to the user */
+	if (ret == ERROR_INVALID_NUMBER) {
+		command_print(CMD, "'%s' is not a valid number", str);
+	} else if (ret == ERROR_NUMBER_EXCEEDS_BUFFER) {
+		command_print(CMD, "Number %s exceeds %u bits", str, buf_len);
+	} else {
+		command_print(CMD, "Could not parse number '%s'", str);
+	}
+
+	return ERROR_COMMAND_ARGUMENT_INVALID;
+}
+
 COMMAND_HELPER(handle_command_parse_bool, bool *out, const char *label)
 {
 	switch (CMD_ARGC) {
-		case 1: {
-			const char *in = CMD_ARGV[0];
-			if (command_parse_bool_arg(in, out) != ERROR_OK) {
-				LOG_ERROR("%s: argument '%s' is not valid", CMD_NAME, in);
-				return ERROR_COMMAND_SYNTAX_ERROR;
-			}
-		}
-			/* fallthrough */
-		case 0:
-			LOG_INFO("%s is %s", label, *out ? "enabled" : "disabled");
-			break;
-		default:
+	case 1: {
+		const char *in = CMD_ARGV[0];
+		if (command_parse_bool_arg(in, out) != ERROR_OK) {
+			LOG_ERROR("%s: argument '%s' is not valid", CMD_NAME, in);
 			return ERROR_COMMAND_SYNTAX_ERROR;
+		}
+	}
+		/* fallthrough */
+	case 0:
+		LOG_INFO("%s is %s", label, *out ? "enabled" : "disabled");
+		break;
+	default:
+		return ERROR_COMMAND_SYNTAX_ERROR;
 	}
 	return ERROR_OK;
 }
