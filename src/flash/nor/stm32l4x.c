@@ -293,14 +293,6 @@ static const struct stm32l4_rev stm32l47_l48xx_revs[] = {
 	{ 0x1000, "1" }, { 0x1001, "2" }, { 0x1003, "3" }, { 0x1007, "4" }
 };
 
-static const struct stm32l4_rev stm32u03xx_revs[] = {
-	{ 0x1000, "A" },
-};
-
-static const struct stm32l4_rev stm32u07_u08xx_revs[] = {
-	{ 0x1000, "A" },
-};
-
 static const struct stm32l4_rev stm32l43_l44xx_revs[] = {
 	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x2001, "Y" },
 };
@@ -409,14 +401,6 @@ static const struct stm32l4_rev stm32wba5x_revs[] = {
 	{ 0x1000, "A" },
 };
 
-static const struct stm32l4_rev stm32u57_u58xx_revs[] = {
-	{ 0x1000, "A" }, { 0x1001, "Z" }, { 0x1003, "Y" }, { 0x2000, "B" }, { 0x2001, "X" },
-};
-
-static const struct stm32l4_rev stm32u5f_u5gxx_revs[] = {
-	{ 0x1000, "A" }, { 0x1001, "Z" },
-};
-
 static const struct stm32l4_rev stm32wbaxx_revs[] = {
 	{ 0x1000, "A" },
 };
@@ -435,10 +419,6 @@ static const struct stm32l4_rev stm32wb3xx_revs[] = {
 
 static const struct stm32l4_rev stm32wle_wl5xx_revs[] = {
 	{ 0x1000, "1.0" },
-};
-
-static const struct stm32l4_rev stm32u53_u54xx_revs[] = {
-	{ 0x1000, "A" },
 };
 
 static const struct stm32l4_part_info stm32l4_parts[] = {
