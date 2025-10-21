@@ -29,12 +29,7 @@ in
 stdenv.mkDerivation rec {
   pname = "openocd";
   version = "0.12.0-luminaire";
-  src = fetchFromGitHub {
-    owner = "goshdarnharris";
-    repo = "openocd";
-    rev = "e5fe2057f21bae448c3fdb4a0c612492acf15ec3";
-    hash = "sha256-4LJe3ZAmbwudRXy4kp2NqYLWsbwAhFhhCE/yZ11MhEc=";
-  };
+  src = ./.;
 
   nativeBuildInputs = [
     pkg-config
