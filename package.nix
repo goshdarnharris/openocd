@@ -29,7 +29,7 @@ in
 stdenv.mkDerivation rec {
   pname = "openocd";
   version = "0.12.0-luminaire";
-  src = ./.;
+  src = builtins.fetchGit ./.;
 
   nativeBuildInputs = [
     pkg-config
