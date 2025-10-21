@@ -8,7 +8,7 @@
     };
 
   outputs =
-    { self, ... }@inputs:
+    { self, nixpkgs, ... }@inputs:
 
     let
       supportedSystems = [
@@ -25,22 +25,8 @@
         );
     in
     {
-      devShells = forEachSupportedSystem (
-        { pkgs }:
-        {
-          default =
-            pkgs.mkShell
-              {
-                packages =
-                  with pkgs;
-                  [
-                    gcc-arm-embedded-13
-                    pkgs.llvmPackages_21.clangNoLibc
-                    libtool
-                    automake
-                  ];
-              };
-        }
-      );
+      packages.x86_64-linux.default = 
+        with import nixpkgs { system = "x86_64-linux"; };
+        pkgs.callPackage ./package.nix { };      
     };
 }

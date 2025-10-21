@@ -1,7 +1,7 @@
 {
   stdenv,
   lib,
-  fetchurl,
+  fetchFromGitHub,
   pkg-config,
   hidapi,
   tcl,
@@ -9,6 +9,10 @@
   libjaylink,
   libusb1,
   libgpiod_1,
+  libtool,
+  which,
+  automake,
+  autoconf,
 
   enableFtdi ? true,
   libftdi1,
@@ -29,7 +33,7 @@ stdenv.mkDerivation rec {
     owner = "goshdarnharris";
     repo = "openocd";
     rev = "e5fe2057f21bae448c3fdb4a0c612492acf15ec3";
-    hash = "sha256-ryVHiL6Yhh8r2RA/5uYKd07Jaow3R0Tu+Rl/YEMHWvo=";
+    hash = "sha256-4LJe3ZAmbwudRXy4kp2NqYLWsbwAhFhhCE/yZ11MhEc=";
   };
 
   nativeBuildInputs = [
@@ -39,6 +43,11 @@ stdenv.mkDerivation rec {
 
   buildInputs = [
     libusb1
+    libtool
+    which
+    pkg-config
+    automake
+    autoconf
   ]
   ++ lib.optionals notWindows [
     hidapi
@@ -94,6 +103,10 @@ stdenv.mkDerivation rec {
       "-Wno-error=strict-prototypes" # fixes build failure with hidapi 0.10.0
     ]
   );
+
+  preConfigure = ''
+    ./bootstrap
+  '';
 
   postInstall = lib.optionalString stdenv.hostPlatform.isLinux ''
     mkdir -p "$out/etc/udev/rules.d"
