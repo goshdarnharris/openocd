@@ -2,14 +2,38 @@
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0";
     flake-utils.url = "github:numtide/flake-utils";
+    globset = {
+      url = "github:pdtpartners/globset";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
     self.submodules = true;
   };
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, globset }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         name = "openocd";
-        src = ./.;
         pkgs = nixpkgs.legacyPackages.${system};
+        fs = pkgs.lib.fileset;
+        src = fs.toSource {
+          root = "./.";
+          fileset = fs.difference 
+            ./. 
+            (fs.unions [
+              ./guess-rev.sh
+              ./AUTHORS
+              ./AUTHORS.Changelog
+              ./HACKING
+              ./TODO
+              ./BUGS
+              ./ChangeLog
+              ./COPYING
+              ./.github
+            ]
+            ++ (globset.globs ./. [
+              "NEWS*"
+              "README*"
+            ]));
+        };
       in
       {
         packages = {
