@@ -37,7 +37,7 @@
 #include <strings.h>
 #endif
 
-#define GIT_URL "[https://github.com/STMicroelectronics/OpenOCD]"
+#define GIT_URL "[https://github.com/goshdarnharris/openocd]"
 
 #ifdef PKGBLDDATE
 #define OPENOCD_VERSION	\
